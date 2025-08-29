@@ -1,51 +1,157 @@
 <template>
   <div class="container">
     <div class="header">
-      <h2>GitHub 热门项目</h2>
-      <div class="controls">
-        <select v-model="sort" class="button">
-          <option value="stars">星标数</option>
-          <option value="forks">复刻数</option>
-          <option value="updated">最近更新</option>
-        </select>
+      <h2>{{ t('title') }}</h2>
+      <div class="header-controls">
+        <el-select v-model="sort" :placeholder="t('sortBy')" size="small">
+          <el-option :label="t('stars')" value="stars" />
+          <el-option :label="t('forks')" value="forks" />
+          <el-option :label="t('recentlyUpdated')" value="updated" />
+        </el-select>
+                <el-button 
+          type="text" 
+          size="small" 
+          @click="toggleLanguage"
+          class="lang-toggle"
+        >
+          {{ currentLocale === 'zh' ? 'EN' : '中文' }}
+        </el-button>
+        <el-button 
+          type="text" 
+          size="small" 
+          @click="toggleTheme"
+          class="theme-toggle"
+          :title="t('theme')"
+        >
+          {{ currentTheme === 'light' ? '🌙' : '☀️' }}
+        </el-button>
       </div>
     </div>
 
-    <div class="searchbar" style="margin-bottom:12px">
-      <input v-model="q" @keyup.enter="fetchRepos" placeholder="搜索项目 (例如: vue, react)" style="flex:1;padding:8px;border-radius:6px;border:1px solid #ddd" />
-      <select v-model="language" class="button">
-        <option value="">所有语言</option>
-        <option v-for="l in languages" :key="l" :value="l">{{ l }}</option>
-      </select>
-      <button class="button" @click="fetchRepos">搜索</button>
+    <div class="searchbar">
+      <div class="search-input-container">
+        <el-input
+          v-model="q"
+          clearable
+          :placeholder="t('searchPlaceholder')"
+          @keyup.enter="fetchRepos"
+          @focus="showHistory = true"
+          @blur="setTimeout(() => (showHistory = false), 200)"
+        />
+        <!-- 搜索历史下拉 -->
+        <div
+          v-if="showHistory && searchHistory.length > 0"
+          class="search-history-dropdown"
+        >
+          <div class="history-header">
+            <span>{{ t('searchHistory') }}</span>
+            <el-button
+              type="text"
+              size="small"
+              @click="clearSearchHistory"
+              class="clear-history-btn"
+            >
+              {{ t('clear') }}
+            </el-button>
+          </div>
+          <div
+            v-for="query in searchHistory"
+            :key="query"
+            class="history-item"
+            @click="selectFromHistory(query)"
+          >
+            {{ query }}
+          </div>
+        </div>
+      </div>
+      <el-select
+        v-model="language"
+        :placeholder="t('language')"
+        clearable
+        size="small"
+      >
+        <el-option
+          v-for="l in languages"
+          :key="l"
+          :label="t(`languageOptions.${l}`)"
+          :value="l"
+        />
+      </el-select>
+      <el-button type="primary" @click="fetchRepos">{{
+        t('search')
+      }}</el-button>
     </div>
 
-    <div v-if="loading">加载中...</div>
+    <LoadingState v-if="loading" />
 
-    <div v-else class="grid">
+    <div v-else-if="repos.length > 0" class="grid">
       <RepoCard v-for="r in repos" :key="r.id" :repo="r" @open="openRepo" />
     </div>
 
-    <div class="pagination">
-      <button class="button" :disabled="page===1" @click="changePage(page-1)">上一页</button>
-      <div class="small">第 {{ page }} 页</div>
-      <button class="button" :disabled="repos.length===0" @click="changePage(page+1)">下一页</button>
-    </div>
+    <EmptyState
+      v-else-if="!loading && repos.length === 0"
+      :description="`${t('noResults')} - ${t('noResultsDesc')}`"
+      @retry="fetchRepos"
+    />
 
-    <div v-if="selectedRepo" class="card" style="margin-top:12px">
-      <h3>{{ selectedRepo.full_name }}</h3>
-      <p class="small">{{ selectedRepo.description }}</p>
-      <p class="small">⭐ {{ selectedRepo.stargazers_count }} • 复刻 {{ selectedRepo.forks_count }} • {{ selectedRepo.language }}</p>
-      <a :href="selectedRepo.html_url" target="_blank" class="button">在 GitHub 上查看</a>
-      <button class="button" @click="selectedRepo=null">关闭</button>
-    </div>
+    <el-pagination
+      v-if="!loading"
+      layout="prev, pager, next"
+      :page-size="per_page"
+      v-model:current-page="page"
+      @current-change="fetchRepos"
+      :total="9999"
+      style="margin: 16px auto; text-align: center"
+    />
+
+    <el-dialog
+      v-model="showDialog"
+      width="60%"
+      :title="selectedRepo?.full_name"
+    >
+      <template v-if="selectedRepo">
+        <p>{{ selectedRepo.description }}</p>
+        <p>
+          ⭐ {{ selectedRepo.stargazers_count }} | {{ t('forks') }}
+          {{ selectedRepo.forks_count }} | {{ selectedRepo.language }}
+        </p>
+        <a :href="selectedRepo.html_url" target="_blank">{{
+          t('openOnGitHub')
+        }}</a>
+        <el-divider />
+        <div v-if="readmeLoading">{{ t('loadingReadme') }}</div>
+        <div v-else v-html="readmeHtml" class="readme"></div>
+      </template>
+      <template #footer>
+        <el-button @click="showDialog = false">{{ t('close') }}</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, watch } from 'vue'
 import axios from 'axios'
+import { marked } from 'marked'
 import RepoCard from './components/RepoCard.vue'
+import LoadingState from './components/LoadingState.vue'
+import EmptyState from './components/EmptyState.vue'
+import { t, currentLocale } from './i18n.js'
+import {
+  showError,
+  showInfo,
+  handleNetworkError,
+  handleApiError,
+} from './utils/errorHandler.js'
+import {
+  getStorage,
+  setStorage,
+  addSearchHistory,
+  getSearchHistory,
+  removeStorage,
+  STORAGE_KEYS,
+} from './utils/storage.js'
+import { toggleTheme, currentTheme, initializeTheme } from './utils/theme.js'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://api.github.com'
 
@@ -56,46 +162,244 @@ const page = ref(1)
 const per_page = 12
 const repos = ref([])
 const loading = ref(false)
+
+const showDialog = ref(false)
 const selectedRepo = ref(null)
+const readmeHtml = ref('')
+const readmeLoading = ref(false)
 
-const languages = ['JavaScript','TypeScript','Python','Go','Rust','C++','Java','HTML','CSS']
+const languages = [
+  'JavaScript',
+  'TypeScript',
+  'Python',
+  'Go',
+  'Rust',
+  'C++',
+  'Java',
+  'HTML',
+  'CSS',
+]
 
-async function fetchRepos(){
+const searchHistory = ref([])
+const showHistory = ref(false)
+
+function toggleLanguage() {
+  currentLocale.value = currentLocale.value === 'zh' ? 'en' : 'zh'
+  setStorage(STORAGE_KEYS.LANGUAGE, currentLocale.value)
+}
+
+async function fetchRepos() {
   loading.value = true
-  try{
-    // build query; if user entered q, search by q; otherwise search by stars
+  try {
     let query = q.value ? `${q.value}` : 'stars:>1000'
     if (language.value) query += ` language:${language.value}`
-
     const params = {
       q: query,
       sort: sort.value,
       order: 'desc',
       per_page,
-      page: page.value
+      page: page.value,
+    }
+    const res = await axios.get(`${API_BASE}/search/repositories`, { params })
+    repos.value = res.data.items || []
+
+    if (repos.value.length === 0 && q.value) {
+      showInfo(t('noResults'), currentLocale.value)
     }
 
-    const url = `${API_BASE}/search/repositories`
-    const res = await axios.get(url, { params })
-    repos.value = res.data.items || []
-  }catch(err){
-    console.error(err)
+    // 保存搜索历史
+    if (q.value) {
+      addSearchHistory(q.value)
+      searchHistory.value = getSearchHistory()
+    }
+
+    // 保存用户偏好
+    setStorage(STORAGE_KEYS.SORT_PREFERENCE, sort.value)
+    setStorage(STORAGE_KEYS.LANGUAGE_FILTER, language.value)
+  } catch (err) {
+    // 处理网络错误
+    if (handleNetworkError(err, currentLocale.value)) {
+      return
+    }
+
+    // 处理 API 错误
+    if (handleApiError(err, currentLocale.value)) {
+      return
+    }
+
+    // 其他错误
+    showError(err, 'UNKNOWN', currentLocale.value)
     repos.value = []
-  }finally{
+  } finally {
     loading.value = false
   }
 }
 
-function changePage(p){
-  page.value = p
+function openRepo(repo) {
+  selectedRepo.value = repo
+  showDialog.value = true
+  fetchReadme(repo)
+}
+
+async function fetchReadme(repo) {
+  readmeLoading.value = true
+  readmeHtml.value = ''
+  try {
+    const url = `${API_BASE}/repos/${repo.owner.login}/${repo.name}/readme`
+    const res = await axios.get(url, {
+      headers: { Accept: 'application/vnd.github.v3.raw' },
+    })
+    // 如果直接拿 content（base64）:
+    if (res.data.content) {
+      const decoded = atob(res.data.content)
+      readmeHtml.value = marked(decoded)
+    } else if (typeof res.data === 'string') {
+      // 当 Accept: raw 时，直接返回 markdown 文本
+      readmeHtml.value = marked(res.data)
+    }
+  } catch (err) {
+    showError(err, 'API', currentLocale.value)
+    readmeHtml.value = `<p>${t('failedToLoadReadme')}</p>`
+  } finally {
+    readmeLoading.value = false
+  }
+}
+
+// 初始化用户偏好
+function initializeUserPreferences() {
+  // 加载语言偏好
+  const savedLanguage = getStorage(STORAGE_KEYS.LANGUAGE)
+  if (savedLanguage) {
+    currentLocale.value = savedLanguage
+  }
+
+  // 加载排序偏好
+  const savedSort = getStorage(STORAGE_KEYS.SORT_PREFERENCE)
+  if (savedSort) {
+    sort.value = savedSort
+  }
+
+  // 加载语言筛选偏好
+  const savedLanguageFilter = getStorage(STORAGE_KEYS.LANGUAGE_FILTER)
+  if (savedLanguageFilter) {
+    language.value = savedLanguageFilter
+  }
+
+  // 加载搜索历史
+  searchHistory.value = getSearchHistory()
+}
+
+// 从历史记录中选择搜索
+function selectFromHistory(query) {
+  q.value = query
+  showHistory.value = false
   fetchRepos()
 }
 
-function openRepo(r){ selectedRepo.value = r }
+// 清空搜索历史
+function clearSearchHistory() {
+  searchHistory.value = []
+  removeStorage(STORAGE_KEYS.SEARCH_HISTORY)
+}
 
-// initial load
+// 初始化
+initializeUserPreferences()
+initializeTheme()
 fetchRepos()
 
-// watch for sort change reset to page 1
-watch(sort, ()=>{ page.value = 1; fetchRepos() })
-</script> 
+watch(sort, () => {
+  page.value = 1
+  fetchRepos()
+})
+</script>
+
+<style>
+.readme {
+  background: var(--bg-secondary);
+  padding: 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 20px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.lang-toggle,
+.theme-toggle {
+  font-size: 14px;
+  color: #409eff;
+}
+
+.theme-toggle {
+  margin-left: 8px;
+}
+.searchbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.search-input-container {
+  position: relative;
+  flex: 1;
+}
+
+.search-history-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 12px;
+  color: #909399;
+}
+
+.clear-history-btn {
+  padding: 0;
+  font-size: 12px;
+}
+
+.history-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.history-item:hover {
+  background-color: #f5f7fa;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+</style>
