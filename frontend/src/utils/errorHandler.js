@@ -62,7 +62,7 @@ export function showError(error, type = ErrorType.UNKNOWN, locale = 'zh') {
 }
 
 // 显示成功消息
-export function showSuccess(message, locale = 'zh') {
+export function showSuccess(message) {
   ElMessage.success({
     message,
     duration: 3000,
@@ -71,7 +71,7 @@ export function showSuccess(message, locale = 'zh') {
 }
 
 // 显示警告消息
-export function showWarning(message, locale = 'zh') {
+export function showWarning(message) {
   ElMessage.warning({
     message,
     duration: 4000,
@@ -80,7 +80,7 @@ export function showWarning(message, locale = 'zh') {
 }
 
 // 显示信息消息
-export function showInfo(message, locale = 'zh') {
+export function showInfo(message) {
   ElMessage.info({
     message,
     duration: 3000,

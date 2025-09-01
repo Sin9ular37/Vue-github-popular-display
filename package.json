@@ -1,0 +1,30 @@
+{
+  "name": "vue-github-popular-display",
+  "version": "1.0.0",
+  "description": "Vue GitHub Popular Display - 一个展示 GitHub 热门项目的 Vue 应用",
+  "private": true,
+  "scripts": {
+    "dev": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "preview": "cd frontend && npm run preview",
+    "lint": "cd frontend && npm run lint",
+    "format": "cd frontend && npm run format",
+    "install:frontend": "cd frontend && npm install",
+    "install:proxy": "cd proxy && npm install",
+    "install:all": "npm run install:frontend && npm run install:proxy",
+    "start": "npm run install:all && npm run dev"
+  },
+  "keywords": [
+    "vue",
+    "github",
+    "popular",
+    "display",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  }
+} 

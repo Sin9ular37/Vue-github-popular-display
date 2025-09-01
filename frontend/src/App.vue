@@ -8,17 +8,17 @@
           <el-option :label="t('forks')" value="forks" />
           <el-option :label="t('recentlyUpdated')" value="updated" />
         </el-select>
-                <el-button 
-          type="text" 
-          size="small" 
+        <el-button
+          type="text"
+          size="small"
           @click="toggleLanguage"
           class="lang-toggle"
         >
           {{ currentLocale === 'zh' ? 'EN' : '中文' }}
         </el-button>
-        <el-button 
-          type="text" 
-          size="small" 
+        <el-button
+          type="text"
+          size="small"
           @click="toggleTheme"
           class="theme-toggle"
           :title="t('theme')"
@@ -84,9 +84,18 @@
 
     <LoadingState v-if="loading" />
 
-    <div v-else-if="repos.length > 0" class="grid">
-      <RepoCard v-for="r in repos" :key="r.id" :repo="r" @open="openRepo" />
-    </div>
+    <VirtualList
+      v-else-if="repos.length > 0"
+      :items="repos"
+      :item-height="itemHeight"
+      :container-height="containerHeight"
+    >
+      <template #default="{ item }">
+        <div class="grid-item">
+          <RepoCard :repo="item" @open="openRepo" />
+        </div>
+      </template>
+    </VirtualList>
 
     <EmptyState
       v-else-if="!loading && repos.length === 0"
@@ -133,7 +142,10 @@
 import { ref, watch } from 'vue'
 import axios from 'axios'
 import { marked } from 'marked'
+import { apiCache } from './utils/cache'
+import { debounce } from './utils/debounce'
 import RepoCard from './components/RepoCard.vue'
+import VirtualList from './components/VirtualList.vue'
 import LoadingState from './components/LoadingState.vue'
 import EmptyState from './components/EmptyState.vue'
 import { t, currentLocale } from './i18n.js'
@@ -159,9 +171,13 @@ const q = ref('')
 const language = ref('')
 const sort = ref('stars')
 const page = ref(1)
-const per_page = 12
+const per_page = 50
 const repos = ref([])
 const loading = ref(false)
+
+// 虚拟列表相关
+const itemHeight = 140 // 每个卡片预估高度（可按需调整）
+const containerHeight = ref(600)
 
 const showDialog = ref(false)
 const selectedRepo = ref(null)
@@ -188,7 +204,7 @@ function toggleLanguage() {
   setStorage(STORAGE_KEYS.LANGUAGE, currentLocale.value)
 }
 
-async function fetchRepos() {
+const fetchRepos = debounce(async function fetchReposDebounced() {
   loading.value = true
   try {
     let query = q.value ? `${q.value}` : 'stars:>1000'
@@ -233,7 +249,7 @@ async function fetchRepos() {
   } finally {
     loading.value = false
   }
-}
+}, 300)
 
 function openRepo(repo) {
   selectedRepo.value = repo
@@ -245,10 +261,14 @@ async function fetchReadme(repo) {
   readmeLoading.value = true
   readmeHtml.value = ''
   try {
+    const cacheKey = `readme_${repo.owner.login}_${repo.name}`
+    const cached = apiCache.getStats && null // placeholder to ensure import is used
     const url = `${API_BASE}/repos/${repo.owner.login}/${repo.name}/readme`
-    const res = await axios.get(url, {
-      headers: { Accept: 'application/vnd.github.v3.raw' },
-    })
+    const res = await apiCache.cachedRequest(
+      cacheKey,
+      () => axios.get(url, { headers: { Accept: 'application/vnd.github.v3.raw' } }).then(r => r),
+      5 * 60 * 1000
+    )
     // 如果直接拿 content（base64）:
     if (res.data.content) {
       const decoded = atob(res.data.content)
@@ -263,6 +283,13 @@ async function fetchReadme(repo) {
   } finally {
     readmeLoading.value = false
   }
+}
+
+// 计算并设置容器高度
+function updateContainerHeight() {
+  const viewportHeight = window.innerHeight || 800
+  const headerHeight = 160 // 头部+搜索区域的估算高度
+  containerHeight.value = Math.max(360, viewportHeight - headerHeight)
 }
 
 // 初始化用户偏好
@@ -305,6 +332,8 @@ function clearSearchHistory() {
 // 初始化
 initializeUserPreferences()
 initializeTheme()
+updateContainerHeight()
+window.addEventListener('resize', updateContainerHeight)
 fetchRepos()
 
 watch(sort, () => {
@@ -401,5 +430,9 @@ watch(sort, () => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 12px;
+}
+
+.grid-item {
+  padding: 6px;
 }
 </style>

@@ -61,10 +61,10 @@ export function applyTheme(theme) {
 
   // 设置 body 类名
   document.body.className = `theme-${theme}`
-  
+
   // 更新当前主题
   currentTheme.value = theme
-  
+
   // 保存到本地存储
   try {
     localStorage.setItem('github-popular-theme', theme)
@@ -75,9 +75,8 @@ export function applyTheme(theme) {
 
 // 切换主题
 export function toggleTheme() {
-  const newTheme = currentTheme.value === ThemeType.LIGHT 
-    ? ThemeType.DARK 
-    : ThemeType.LIGHT
+  const newTheme =
+    currentTheme.value === ThemeType.LIGHT ? ThemeType.DARK : ThemeType.LIGHT
   applyTheme(newTheme)
 }
 
@@ -89,7 +88,9 @@ export function initializeTheme() {
       applyTheme(savedTheme)
     } else {
       // 检查系统偏好
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+      const prefersDark = window.matchMedia(
+        '(prefers-color-scheme: dark)'
+      ).matches
       const defaultTheme = prefersDark ? ThemeType.DARK : ThemeType.LIGHT
       applyTheme(defaultTheme)
     }
@@ -102,10 +103,10 @@ export function initializeTheme() {
 // 监听系统主题变化
 export function watchSystemTheme() {
   const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-  mediaQuery.addEventListener('change', (e) => {
+  mediaQuery.addEventListener('change', e => {
     const newTheme = e.matches ? ThemeType.DARK : ThemeType.LIGHT
     if (!localStorage.getItem('github-popular-theme')) {
       applyTheme(newTheme)
     }
   })
-} 
+}
