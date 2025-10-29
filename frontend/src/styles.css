@@ -2,40 +2,6 @@
   box-sizing: border-box;
 }
 
-body {
-  font-family: Inter, system-ui, Arial;
-  background: var(--bg-secondary, #f6f7fb);
-  color: var(--text-primary, #222);
-  padding: 16px;
-  transition:
-    background-color 0.3s,
-    color 0.3s;
-}
-
-/* 主题相关样式 */
-.theme-light {
-  --bg-primary: #ffffff;
-  --bg-secondary: #f6f7fb;
-  --text-primary: #222222;
-  --text-secondary: #666666;
-  --border-color: #dcdfe6;
-  --shadow-color: rgba(0, 0, 0, 0.06);
-  --card-bg: #ffffff;
-  --hover-bg: #f5f7fa;
-}
-
-.theme-dark {
-  --bg-primary: #1a1a1a;
-  --bg-secondary: #2d2d2d;
-  --text-primary: #ffffff;
-  --text-secondary: #b0b0b0;
-  --border-color: #404040;
-  --shadow-color: rgba(0, 0, 0, 0.3);
-  --card-bg: #2d2d2d;
-  --hover-bg: #404040;
-}
-
-/* 默认主题（浅色） */
 :root {
   --bg-primary: #ffffff;
   --bg-secondary: #f6f7fb;
@@ -45,60 +11,64 @@ body {
   --shadow-color: rgba(0, 0, 0, 0.06);
   --card-bg: #ffffff;
   --hover-bg: #f5f7fa;
+  --el-color-primary: #409eff;
+  --el-border-radius-base: 10px;
+  --el-border-radius-small: 8px;
+  --el-font-family: Inter, 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont,
+    'PingFang SC', 'Microsoft YaHei', sans-serif;
 }
-.container {
-  max-width: 1100px;
-  margin: 0 auto;
+
+body {
+  font-family: var(--el-font-family);
+  background: var(--bg-secondary, #f6f7fb);
+  color: var(--text-primary, #222);
+  margin: 0;
+  min-height: 100vh;
+  padding: 24px;
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
 }
-.header {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
+
+#app {
+  min-height: 100vh;
 }
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 12px;
+
+/* 主题相关样式 */
+.theme-light {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f6f7fb;
+  --text-primary: #222222;
+  --text-secondary: #666666;
+  --border-color: #dcdfe6;
+  --shadow-color: rgba(0, 0, 0, 0.08);
+  --card-bg: #ffffff;
+  --hover-bg: #f5f7fa;
+  --el-bg-color: #ffffff;
+  --el-bg-color-overlay: #ffffff;
+  --el-text-color-primary: #222222;
+  --el-text-color-regular: #444444;
+  --el-text-color-secondary: #666666;
+  --el-border-color: #dcdfe6;
+  --el-fill-color-blank: #ffffff;
+  --el-mask-color: rgba(0, 0, 0, 0.6);
 }
-.card {
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
-  padding: 14px;
-}
-.searchbar {
-  display: flex;
-  gap: 8px;
-}
-.controls {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.pagination {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  justify-content: center;
-  margin: 16px 0;
-}
-.button {
-  padding: 8px 12px;
-  border-radius: 6px;
-  border: 1px solid #e3e6ef;
-  background: #fff;
-  cursor: pointer;
-}
-.button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.repo-name {
-  font-weight: 600;
-}
-.small {
-  font-size: 12px;
-  color: #666;
+
+.theme-dark {
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #121212;
+  --text-primary: #ffffff;
+  --text-secondary: #b0b0b0;
+  --border-color: #404040;
+  --shadow-color: rgba(0, 0, 0, 0.5);
+  --card-bg: #1f1f1f;
+  --hover-bg: #2a2a2a;
+  --el-bg-color: #1f1f1f;
+  --el-bg-color-overlay: #1f1f1f;
+  --el-text-color-primary: #ffffff;
+  --el-text-color-regular: #dddddd;
+  --el-text-color-secondary: #bbbbbb;
+  --el-border-color: #3a3a3a;
+  --el-fill-color-blank: #1f1f1f;
+  --el-mask-color: rgba(0, 0, 0, 0.6);
 }

@@ -3,22 +3,16 @@
     <div class="header">
       <h2>{{ t('title') }}</h2>
       <div class="header-controls">
-        <el-select v-model="sort" :placeholder="t('sortBy')" size="small">
+        <el-select v-model="sort" :placeholder="t('sortBy')" class="sort-select">
           <el-option :label="t('stars')" value="stars" />
           <el-option :label="t('forks')" value="forks" />
           <el-option :label="t('recentlyUpdated')" value="updated" />
         </el-select>
-        <el-button
-          type="text"
-          size="small"
-          @click="toggleLanguage"
-          class="lang-toggle"
-        >
+        <el-button type="text" @click="toggleLanguage" class="lang-toggle">
           {{ currentLocale === 'zh' ? 'EN' : '中文' }}
         </el-button>
         <el-button
           type="text"
-          size="small"
           @click="toggleTheme"
           class="theme-toggle"
           :title="t('theme')"
@@ -68,7 +62,7 @@
         v-model="language"
         :placeholder="t('language')"
         clearable
-        size="small"
+        class="language-select"
       >
         <el-option
           v-for="l in languages"
@@ -77,25 +71,22 @@
           :value="l"
         />
       </el-select>
-      <el-button type="primary" @click="fetchRepos">{{
-        t('search')
-      }}</el-button>
+      <el-button type="primary" class="search-btn" @click="fetchRepos">
+        {{ t('search') }}
+      </el-button>
     </div>
 
     <LoadingState v-if="loading" />
 
-    <VirtualList
-      v-else-if="repos.length > 0"
-      :items="repos"
-      :item-height="itemHeight"
-      :container-height="containerHeight"
-    >
-      <template #default="{ item }">
-        <div class="grid-item">
-          <RepoCard :repo="item" @open="openRepo" />
-        </div>
-      </template>
-    </VirtualList>
+    <div v-else-if="repos.length > 0" class="repo-grid">
+      <div
+        v-for="item in repos"
+        :key="item.id"
+        class="repo-grid-item"
+      >
+        <RepoCard :repo="item" @open="openRepo" />
+      </div>
+    </div>
 
     <EmptyState
       v-else-if="!loading && repos.length === 0"
@@ -145,7 +136,6 @@ import { marked } from 'marked'
 import { apiCache } from './utils/cache'
 import { debounce } from './utils/debounce'
 import RepoCard from './components/RepoCard.vue'
-import VirtualList from './components/VirtualList.vue'
 import LoadingState from './components/LoadingState.vue'
 import EmptyState from './components/EmptyState.vue'
 import { t, currentLocale } from './i18n.js'
@@ -164,6 +154,7 @@ import {
   STORAGE_KEYS,
 } from './utils/storage.js'
 import { toggleTheme, currentTheme, initializeTheme } from './utils/theme.js'
+import { translateBatch } from './utils/translator.js'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://api.github.com'
 
@@ -175,9 +166,7 @@ const per_page = 50
 const repos = ref([])
 const loading = ref(false)
 
-// 虚拟列表相关
-const itemHeight = 140 // 每个卡片预估高度（可按需调整）
-const containerHeight = ref(600)
+let translationToken = 0
 
 const showDialog = ref(false)
 const selectedRepo = ref(null)
@@ -202,6 +191,64 @@ const showHistory = ref(false)
 function toggleLanguage() {
   currentLocale.value = currentLocale.value === 'zh' ? 'en' : 'zh'
   setStorage(STORAGE_KEYS.LANGUAGE, currentLocale.value)
+}
+
+async function applyTranslations(reposList) {
+  if (
+    currentLocale.value !== 'zh' ||
+    !Array.isArray(reposList) ||
+    reposList.length === 0
+  ) {
+    return
+  }
+
+  reposList.forEach(repo => {
+    if (repo) {
+      repo.isTranslating = false
+    }
+  })
+
+  const targetRepos = reposList.filter(
+    repo =>
+      repo &&
+      typeof repo.description === 'string' &&
+      repo.description.trim().length > 0
+  )
+
+  if (targetRepos.length === 0) {
+    reposList.forEach(repo => {
+      if (repo) repo.isTranslating = false
+    })
+    return
+  }
+
+  const token = ++translationToken
+  targetRepos.forEach(repo => {
+    repo.isTranslating = true
+  })
+
+  try {
+    const descriptions = targetRepos.map(repo => repo.description.trim())
+    const translationMap = await translateBatch(descriptions, 'zh')
+    if (token !== translationToken) {
+      return
+    }
+
+    targetRepos.forEach(repo => {
+      const key = repo.description.trim()
+      repo.translated_description =
+        translationMap[key] || repo.description || ''
+      repo.isTranslating = false
+    })
+  } catch (error) {
+    console.warn('Failed to translate repository descriptions:', error)
+    if (token === translationToken) {
+      targetRepos.forEach(repo => {
+        repo.translated_description = repo.description
+        repo.isTranslating = false
+      })
+    }
+  }
 }
 
 const fetchRepos = debounce(async function fetchReposDebounced() {
@@ -232,6 +279,17 @@ const fetchRepos = debounce(async function fetchReposDebounced() {
     // 保存用户偏好
     setStorage(STORAGE_KEYS.SORT_PREFERENCE, sort.value)
     setStorage(STORAGE_KEYS.LANGUAGE_FILTER, language.value)
+
+    if (currentLocale.value === 'zh') {
+      await applyTranslations(repos.value)
+    } else {
+      translationToken++
+      repos.value.forEach(repo => {
+        if (repo) {
+          repo.isTranslating = false
+        }
+      })
+    }
   } catch (err) {
     // 处理网络错误
     if (handleNetworkError(err, currentLocale.value)) {
@@ -262,7 +320,6 @@ async function fetchReadme(repo) {
   readmeHtml.value = ''
   try {
     const cacheKey = `readme_${repo.owner.login}_${repo.name}`
-    const cached = apiCache.getStats && null // placeholder to ensure import is used
     const url = `${API_BASE}/repos/${repo.owner.login}/${repo.name}/readme`
     const res = await apiCache.cachedRequest(
       cacheKey,
@@ -283,13 +340,6 @@ async function fetchReadme(repo) {
   } finally {
     readmeLoading.value = false
   }
-}
-
-// 计算并设置容器高度
-function updateContainerHeight() {
-  const viewportHeight = window.innerHeight || 800
-  const headerHeight = 160 // 头部+搜索区域的估算高度
-  containerHeight.value = Math.max(360, viewportHeight - headerHeight)
 }
 
 // 初始化用户偏好
@@ -332,14 +382,28 @@ function clearSearchHistory() {
 // 初始化
 initializeUserPreferences()
 initializeTheme()
-updateContainerHeight()
-window.addEventListener('resize', updateContainerHeight)
 fetchRepos()
 
 watch(sort, () => {
   page.value = 1
   fetchRepos()
 })
+
+watch(
+  () => currentLocale.value,
+  async newLocale => {
+    if (newLocale === 'zh') {
+      await applyTranslations(repos.value)
+    } else {
+      translationToken++
+      repos.value.forEach(repo => {
+        if (repo) {
+          repo.isTranslating = false
+        }
+      })
+    }
+  }
+)
 </script>
 
 <style>
@@ -356,12 +420,16 @@ watch(sort, () => {
   padding: 20px;
   background: var(--bg-primary);
   color: var(--text-primary);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px var(--shadow-color);
 }
 .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 .header-controls {
   display: flex;
@@ -372,6 +440,11 @@ watch(sort, () => {
 .theme-toggle {
   font-size: 14px;
   color: #409eff;
+  height: 36px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
 }
 
 .theme-toggle {
@@ -379,13 +452,101 @@ watch(sort, () => {
 }
 .searchbar {
   display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 12px;
+  margin-bottom: 16px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .search-input-container {
   position: relative;
   flex: 1;
+  min-width: 220px;
+}
+
+.search-input-container .el-input__wrapper {
+  width: 100%;
+}
+
+.searchbar .el-input__wrapper {
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  box-shadow: none;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.searchbar .el-input__wrapper.is-focus,
+.searchbar .el-input__wrapper:hover {
+  border-color: #409eff;
+  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.15);
+}
+
+.searchbar .el-input__inner {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.searchbar .language-select {
+  width: 180px;
+}
+
+.searchbar .search-btn {
+  height: 44px;
+  min-width: 110px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.searchbar .el-button--primary {
+  height: 44px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.searchbar .el-select {
+  flex-shrink: 0;
+}
+
+.searchbar .el-select .el-input__wrapper {
+  width: 100%;
+}
+
+.searchbar .el-select .el-input__inner {
+  cursor: pointer;
+}
+
+.searchbar .el-input,
+.searchbar .el-select,
+.searchbar .search-btn {
+  flex-basis: auto;
+}
+
+.header-controls .el-select {
+  min-width: 200px;
+}
+
+.header-controls .sort-select .el-input__wrapper {
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  box-shadow: none;
+  background: var(--card-bg);
+}
+
+.header-controls .sort-select .el-input__wrapper.is-focus,
+.header-controls .sort-select .el-input__wrapper:hover {
+  border-color: #409eff;
+  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.15);
+}
+
+.header-controls .el-button {
+  border-radius: 10px;
 }
 
 .search-history-dropdown {
@@ -393,10 +554,10 @@ watch(sort, () => {
   top: 100%;
   left: 0;
   right: 0;
-  background: white;
-  border: 1px solid #dcdfe6;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
   border-radius: 4px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 12px 0 var(--shadow-color);
   z-index: 1000;
   max-height: 300px;
   overflow-y: auto;
@@ -407,9 +568,9 @@ watch(sort, () => {
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-color);
   font-size: 12px;
-  color: #909399;
+  color: var(--text-secondary);
 }
 
 .clear-history-btn {
@@ -424,15 +585,38 @@ watch(sort, () => {
 }
 
 .history-item:hover {
-  background-color: #f5f7fa;
+  background-color: var(--hover-bg);
 }
-.grid {
+.repo-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 12px;
+  margin-bottom: 16px;
 }
 
-.grid-item {
-  padding: 6px;
+.repo-grid-item {
+  padding: 4px;
+}
+
+@media (max-width: 768px) {
+  .searchbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .searchbar .language-select,
+  .searchbar .search-btn {
+    width: 100%;
+  }
+
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .header-controls {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 </style>

@@ -24,7 +24,7 @@ defineProps({
 
 .loading-text {
   margin-top: 16px;
-  color: #909399;
+  color: var(--text-secondary);
   font-size: 14px;
 }
 </style>
